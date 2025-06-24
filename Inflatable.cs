@@ -1,6 +1,7 @@
 using System.Collections;
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
+using System.Diagnostics;
 using UnityEngine;
 
 namespace Naelstrof.Inflatable {
@@ -8,7 +9,11 @@ namespace Naelstrof.Inflatable {
     public class Inflatable {
         private float currentSize;
         private float targetSize;
-        private bool tweenRunning = false;
+
+        // Tweeming
+        private MonoBehaviour tweenOwner;
+        private Coroutine routine;
+
         //[SerializeField] private AnimationCurve bounceCurve;
         //[SerializeField] private float bounceDuration;
         [SerializeField] private InflatableCurve bounce;
@@ -16,7 +21,7 @@ namespace Naelstrof.Inflatable {
         public delegate void ChangedEvent(float newValue);
 
         public event ChangedEvent changed;
-        
+
         [SerializeReference, SubclassSelector]
         public List<InflatableListener> listeners = new List<InflatableListener>();
 
@@ -27,11 +32,10 @@ namespace Naelstrof.Inflatable {
 
         private bool initialized = false;
 
-        private bool SetSize(float newSize, out IEnumerator tween) {
+        private bool SetSize(float newSize, MonoBehaviour owner, out IEnumerator tween) {
             targetSize = newSize;
-            if (!tweenRunning) {
-                tweenRunning = true;
-                tween = TweenToNewSize();
+            if (routine == null) {
+                tween = TweenToNewSize(owner);
                 return true;
             }
             tween = null;
@@ -49,8 +53,9 @@ namespace Naelstrof.Inflatable {
             }
 
             if (tweener.isActiveAndEnabled) {
-                if (SetSize(newSize, out IEnumerator tween)) {
-                    tweener.StartCoroutine(tween);
+                if (SetSize(newSize, tweener, out IEnumerator tween)) {
+                    routine = tweener.StartCoroutine(tween);
+                    tweenOwner = tweener;
                 }
             } else {
                 SetSizeInstant(newSize);
@@ -64,37 +69,47 @@ namespace Naelstrof.Inflatable {
         }
 
         public void OnEnable() {
-            foreach (var listener in listeners) {
-                listener.OnEnable();
+            if (initialized == false) {
+                foreach (var listener in listeners) {
+                    listener.OnEnable();
+                }
+                initialized = true;
             }
-
-            initialized = true;
+            if (routine != null) {
+                tweenOwner.StopCoroutine(routine);
+                routine = null;
+            }
         }
 
         public float GetSize() {
             return targetSize;
         }
 
-        private IEnumerator TweenToNewSize() {
-            float startSize = currentSize;
-            float startTime = Time.time;
-            float endTime = Time.time+bounce.GetBounceDuration();
-            while (Time.time < endTime) {
-                float t = (Time.time - startTime) / bounce.GetBounceDuration();
-                currentSize = Mathf.LerpUnclamped(startSize, targetSize, bounce.EvaluateCurve(t));
+        private IEnumerator TweenToNewSize(MonoBehaviour owner) {
+            try {
+                float startSize = currentSize;
+                float startTime = Time.time;
+                float endTime = Time.time + bounce.GetBounceDuration();
+                while (Time.time < endTime && owner.isActiveAndEnabled) {
+                    float t = (Time.time - startTime) / bounce.GetBounceDuration();
+                    currentSize = Mathf.LerpUnclamped(startSize, targetSize, bounce.EvaluateCurve(t));
+                    foreach (InflatableListener listener in listeners) {
+                        listener.OnSizeChanged(currentSize);
+                    }
+                    changed?.Invoke(currentSize);
+                    yield return null;
+                }
+            } finally {
+                currentSize = targetSize;
                 foreach (InflatableListener listener in listeners) {
                     listener.OnSizeChanged(currentSize);
                 }
                 changed?.Invoke(currentSize);
-                yield return null;
-            }
 
-            currentSize = targetSize;
-            foreach (InflatableListener listener in listeners) {
-                listener.OnSizeChanged(currentSize);
+                if (owner == tweenOwner) {
+                    routine = null;
+                }
             }
-            changed?.Invoke(currentSize);
-            tweenRunning = false;
         }
         public void AddListener(InflatableListener listener) {
             if (initialized) {
