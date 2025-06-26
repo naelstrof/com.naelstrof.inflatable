@@ -74,10 +74,6 @@ namespace Naelstrof.Inflatable {
                 }
                 initialized = true;
             }
-            if (routine != null) {
-                tweenOwner.StopCoroutine(routine);
-                routine = null;
-            }
         }
 
         public float GetSize() {
