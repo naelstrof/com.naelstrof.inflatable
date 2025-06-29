@@ -1,3 +1,4 @@
+using System;
 using System.Collections;
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
@@ -11,7 +12,7 @@ namespace Naelstrof.Inflatable {
 
         // Tweeming
         private MonoBehaviour tweenOwner;
-        private Coroutine routine;
+        private IEnumerator routine;
 
         //[SerializeField] private AnimationCurve bounceCurve;
         //[SerializeField] private float bounceDuration;
@@ -53,7 +54,8 @@ namespace Naelstrof.Inflatable {
 
             if (tweener.isActiveAndEnabled) {
                 if (SetSize(newSize, tweener, out IEnumerator tween)) {
-                    routine = tweener.StartCoroutine(tween);
+                    tweener.StartCoroutine(tween);
+                    routine = tween;
                     tweenOwner = tweener;
                 }
             } else {
@@ -78,6 +80,14 @@ namespace Naelstrof.Inflatable {
 
         public float GetSize() {
             return targetSize;
+        }
+
+        public void EarilyTerminateTween(MonoBehaviour owner) {
+            if (routine != null && owner == tweenOwner) {
+                owner.StopCoroutine(routine);
+                ((IDisposable)routine).Dispose();
+                routine = null;
+            }
         }
 
         private IEnumerator TweenToNewSize(MonoBehaviour owner) {
